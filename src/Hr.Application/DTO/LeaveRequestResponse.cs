@@ -12,6 +12,7 @@ public record LeaveRequestResponse(
     int EmployeeId,
     string? EmployeeName,
     string? EmployeeDepartment,
+    string? EmployeeTitle,
     DateOnly StartDate,
     DateOnly EndDate,
     LeaveType Type,

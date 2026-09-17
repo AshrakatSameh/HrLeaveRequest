@@ -1,4 +1,6 @@
 using FluentValidation;
+using Hr.Application.ServiceContracts;
+using Hr.Application.Services;
 using Hr.Application.Validators;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,6 +12,9 @@ public static class DependencyInjection
     {
         services.AddValidatorsFromAssemblyContaining<LeaveRequestCreateValidator>(
             ServiceLifetime.Scoped);
+
+        services.AddScoped<ILeaveRequestService, LeaveRequestService>();
+        services.AddScoped<IEmployeeService, EmployeeService>();
 
         return services;
     }
