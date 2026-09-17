@@ -254,3 +254,7 @@ dotnet test
 * Demo passwords and JWT key are currently in `appsettings.json` for simplicity.
 * In production, these should be moved to a secure secret/key vault and passwords should be hashed.
 * Historical leave requests are allowed.
+
+
+NOTE:
+appsettings values should be saved locally in user-secrets and in production in azure configration.
