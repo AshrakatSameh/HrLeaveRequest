@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <None Remove="DTO\LeaveRequestQuery.cs~RF92af45.TMP" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hr.Domain\Hr.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="11.11.0" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Common\" />
+    <Folder Include="Validators\" />
+    <Folder Include="ServiceContracts\" />
+    <Folder Include="RepositoryContracts\" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
