@@ -1,0 +1,15 @@
+@using Hr.BlazorClient.Models
+
+<span class="badge @CssClass">@Status</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public LeaveStatus Status { get; set; }
+
+    private string CssClass => Status switch
+    {
+        LeaveStatus.Approved => "badge-approved",
+        LeaveStatus.Rejected => "badge-rejected",
+        _ => "badge-pending"
+    };
+}

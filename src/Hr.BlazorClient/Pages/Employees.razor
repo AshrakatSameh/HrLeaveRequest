@@ -1,0 +1,95 @@
+@page "/employees"
+@using Hr.BlazorClient.Models
+@using Hr.BlazorClient.Services
+@inject IHrApiClient Api
+
+<PageTitle>Employees</PageTitle>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">
+        <span>@_error</span>
+        <button class="btn btn-ghost" @onclick="LoadAsync">Retry</button>
+    </div>
+}
+
+<div class="card">
+    <div class="card-head">
+        <span class="card-title">Employees</span>
+
+        <div class="card-actions">
+            <input class="input" placeholder="Search employees"
+                   @bind="_search" @bind:event="oninput" @bind:after="LoadAsync" />
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="state">
+            <div class="spinner"></div>
+            Loading employees...
+        </div>
+    }
+    else if (_employees.Count == 0)
+    {
+        <div class="state">
+            <div class="state-title">No employees found</div>
+            <p>Try a different search term.</p>
+        </div>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Department</th>
+                    <th>Title</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var employee in _employees)
+                {
+                    <tr>
+                        <td>
+                            <span class="cell-primary">@employee.FullName</span>
+                            <span class="cell-sub">#@employee.Id</span>
+                        </td>
+                        <td>@(employee.Email ?? "—")</td>
+                        <td>@(employee.Department ?? "—")</td>
+                        <td>@(employee.Title ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="pager">
+            <span>@_employees.Count shown</span>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<EmployeeResponse> _employees = [];
+    private string _search = string.Empty;
+    private bool _isLoading = true;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+
+        var result = await Api.GetEmployeesAsync(_search);
+
+        if (result.IsSuccess && result.Value is not null)
+            _employees = result.Value;
+        else
+            _error = result.Error;
+
+        _isLoading = false;
+    }
+}

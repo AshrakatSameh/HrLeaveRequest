@@ -1,0 +1,96 @@
+@using Hr.BlazorClient.Models
+
+<div class="card">
+    <div class="card-head">
+        <span class="card-title">New Leave Request</span>
+        <button class="btn btn-ghost" @onclick="OnCancel" disabled="@IsSaving">Cancel</button>
+    </div>
+
+    <EditForm Model="_model" OnValidSubmit="SubmitAsync">
+        <div class="form-grid">
+            <div class="field">
+                <label for="employee">Employee</label>
+                <select id="employee" class="select" @bind="_model.EmployeeId">
+                    <option value="0">Select an employee</option>
+                    @foreach (var employee in Employees)
+                    {
+                        <option value="@employee.Id">@employee.FullName</option>
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="start">Start date</label>
+                <InputDate id="start" class="input" @bind-Value="_model.StartDate" />
+            </div>
+
+            <div class="field">
+                <label for="end">End date</label>
+                <InputDate id="end" class="input" @bind-Value="_model.EndDate" />
+            </div>
+
+            <div class="field">
+                <label for="type">Type</label>
+                <select id="type" class="select" @bind="_model.Type">
+                    @foreach (var type in Enum.GetValues<LeaveType>())
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="pager">
+            <span>@ValidationMessage</span>
+            <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                @(IsSaving ? "Submitting..." : "Submit request")
+            </button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<EmployeeResponse> Employees { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public EventCallback<LeaveRequestCreate> OnSubmit { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public bool IsSaving { get; set; }
+
+    private readonly FormModel _model = new();
+
+    private string? ValidationMessage { get; set; }
+
+    private async Task SubmitAsync()
+    {
+        if (_model.EmployeeId <= 0)
+        {
+            ValidationMessage = "Select an employee.";
+            return;
+        }
+
+        if (_model.EndDate < _model.StartDate)
+        {
+            ValidationMessage = "End date must be on or after start date.";
+            return;
+        }
+
+        ValidationMessage = null;
+
+        await OnSubmit.InvokeAsync(new LeaveRequestCreate(
+            _model.EmployeeId, _model.StartDate, _model.EndDate, _model.Type));
+    }
+
+    private sealed class FormModel
+    {
+        public int EmployeeId { get; set; }
+        public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public DateOnly EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public LeaveType Type { get; set; } = LeaveType.Vacation;
+    }
+}

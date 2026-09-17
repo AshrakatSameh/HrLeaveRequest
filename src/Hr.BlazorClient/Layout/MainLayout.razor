@@ -1,16 +1,121 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthState Auth
+@inject IHrApiClient Api
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="brand-mark">HR</span>
+            <span class="brand-name">Leave Portal</span>
         </div>
 
-        <article class="content px-4">
+        <NavMenu />
+
+        <div class="sidebar-foot">
+            @if (Auth.IsAuthenticated)
+            {
+                <div>
+                    <div class="foot-user">@Auth.Username</div>
+                    <div class="foot-role">Role: @Auth.Role</div>
+                </div>
+                <button class="btn-link link-delete" @onclick="SignOutAsync">Sign out</button>
+            }
+            else
+            {
+                <span>Not signed in</span>
+                <button class="btn btn-soft" @onclick="OpenLogin">Sign in</button>
+            }
+        </div>
+    </aside>
+
+    <div class="main">
+        <main class="content">
             @Body
-        </article>
-    </main>
+        </main>
+    </div>
 </div>
+
+@if (_showLogin)
+{
+    <div class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-title">Sign in</div>
+            <p class="modal-text">
+                Approving and rejecting requests requires the HR role.
+            </p>
+
+            @if (_loginError is not null)
+            {
+                <div class="alert alert-error"><span>@_loginError</span></div>
+            }
+
+            <div class="field">
+                <label for="username">Username</label>
+                <input id="username" class="input" @bind="_username" @bind:event="oninput" />
+            </div>
+
+            <div class="field" style="margin-top:14px">
+                <label for="password">Password</label>
+                <input id="password" type="password" class="input"
+                       @bind="_password" @bind:event="oninput" />
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @onclick="CloseLogin" disabled="@_isSigningIn">
+                    Cancel
+                </button>
+                <button class="btn btn-primary" @onclick="SignInAsync" disabled="@_isSigningIn">
+                    @(_isSigningIn ? "Signing in..." : "Sign in")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _showLogin;
+    private bool _isSigningIn;
+    private string _username = string.Empty;
+    private string _password = string.Empty;
+    private string? _loginError;
+
+    protected override void OnInitialized() => Auth.Changed += OnAuthChanged;
+
+    public void Dispose() => Auth.Changed -= OnAuthChanged;
+
+    private void OnAuthChanged() => InvokeAsync(StateHasChanged);
+
+    private void OpenLogin()
+    {
+        _username = string.Empty;
+        _password = string.Empty;
+        _loginError = null;
+        _showLogin = true;
+    }
+
+    private void CloseLogin() => _showLogin = false;
+
+    private async Task SignInAsync()
+    {
+        _isSigningIn = true;
+        _loginError = null;
+
+        var result = await Api.LoginAsync(new LoginRequest(_username, _password));
+
+        _isSigningIn = false;
+
+        if (!result.IsSuccess || result.Value is null)
+        {
+            _loginError = result.Error;
+            return;
+        }
+
+        await Auth.SignInAsync(
+            result.Value.Token, result.Value.Username, result.Value.Role, result.Value.ExpiresAt);
+
+        _showLogin = false;
+    }
+
+    private Task SignOutAsync() => Auth.SignOutAsync();
+}

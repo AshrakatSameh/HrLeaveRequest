@@ -1,0 +1,340 @@
+@page "/"
+@using Hr.BlazorClient.Components
+@using Hr.BlazorClient.Models
+@using Hr.BlazorClient.Services
+@implements IDisposable
+@inject IHrApiClient Api
+@inject AuthState Auth
+
+<PageTitle>Leave Requests</PageTitle>
+
+@if (_error is not null)
+{
+    <div class="alert alert-error">
+        <span>@_error</span>
+        <button class="btn btn-ghost" @onclick="ReloadAsync">Retry</button>
+    </div>
+}
+
+@if (_page is { EmployeeDirectoryAvailable: false })
+{
+    <div class="alert alert-warn">
+        <span>The employee directory is unavailable, so employee names are not shown. Leave data is unaffected.</span>
+    </div>
+}
+
+@if (_showForm)
+{
+    <LeaveRequestForm Employees="_employees"
+                      IsSaving="_isSaving"
+                      OnSubmit="CreateAsync"
+                      OnCancel="() => _showForm = false" />
+}
+
+<div class="card">
+    <div class="card-head">
+        <span class="card-title">Leave Requests</span>
+
+        <div class="card-actions">
+            <select class="select" @bind="_statusFilter" @bind:after="ApplyFilterAsync">
+                <option value="">All statuses</option>
+                @foreach (var status in Enum.GetValues<LeaveStatus>())
+                {
+                    <option value="@status">@status</option>
+                }
+            </select>
+
+            <button class="btn btn-soft" @onclick="() => _showForm = true" disabled="@_showForm">
+                New Request
+            </button>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="state">
+            <div class="spinner"></div>
+            Loading leave requests...
+        </div>
+    }
+    else if (_page is null || _page.Items.Count == 0)
+    {
+        <div class="state">
+            <div class="state-title">No leave requests found</div>
+            @if (!string.IsNullOrEmpty(_statusFilter))
+            {
+                <p>No requests match the selected status.</p>
+                <button class="btn btn-soft" @onclick="ClearFilterAsync">Clear filter</button>
+            }
+            else
+            {
+                <p>Submit the first request to see it here.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Title</th>
+                    <th>Dates</th>
+                    <th>Days</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _page.Items)
+                {
+                    <tr class="@(_busyRows.Contains(item.Id) ? "row-busy" : null)">
+                        <td>
+                            <span class="cell-primary">
+                                @(item.EmployeeName ?? $"Employee #{item.EmployeeId}")
+                            </span>
+                            <span class="cell-sub">@(item.EmployeeDepartment ?? "—")</span>
+                        </td>
+                        <td>@item.EmployeeTitle</td>
+                        <td>@item.StartDate.ToString("dd MMM yyyy") &ndash; @item.EndDate.ToString("dd MMM yyyy")</td>
+                        <td>@item.TotalDays</td>
+                        <td><span class="tag">@item.Type</span></td>
+                        <td>
+                            <StatusBadge Status="item.Status" />
+                            @if (!string.IsNullOrWhiteSpace(item.ReviewerNote))
+                            {
+                                <span class="cell-sub">@item.ReviewerNote</span>
+                            }
+                        </td>
+                        <td>
+                            @if (item.Status == LeaveStatus.Pending)
+                            {
+                                <div class="row-actions">
+                                    @if (Auth.IsHr)
+                                    {
+                                        <button class="btn-link link-approve"
+                                                disabled="@_busyRows.Contains(item.Id)"
+                                                @onclick="() => StartReview(item, LeaveStatus.Approved)">
+                                            Approve
+                                        </button>
+                                        <button class="btn-link link-reject"
+                                                disabled="@_busyRows.Contains(item.Id)"
+                                                @onclick="() => StartReview(item, LeaveStatus.Rejected)">
+                                            Reject
+                                        </button>
+                                    }
+                                    <button class="btn-link link-delete"
+                                            disabled="@_busyRows.Contains(item.Id)"
+                                            @onclick="() => DeleteAsync(item.Id)">
+                                        Delete
+                                    </button>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="pager">
+            <span>Page @_page.Page of @Math.Max(_page.TotalPages, 1) &middot; @_page.TotalCount total</span>
+            <div class="pager-buttons">
+                <button class="btn btn-ghost" disabled="@(_page.Page <= 1)"
+                        @onclick="() => GoToPageAsync(_page.Page - 1)">
+                    Previous
+                </button>
+                <button class="btn btn-ghost" disabled="@(_page.Page >= _page.TotalPages)"
+                        @onclick="() => GoToPageAsync(_page.Page + 1)">
+                    Next
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_reviewTarget is not null)
+{
+    <div class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-title">@_reviewStatus leave request</div>
+            <p class="modal-text">
+                @(_reviewTarget.EmployeeName ?? $"Employee #{_reviewTarget.EmployeeId}")
+                &middot;
+                @_reviewTarget.StartDate.ToString("dd MMM yyyy") &ndash; @_reviewTarget.EndDate.ToString("dd MMM yyyy")
+            </p>
+
+            <div class="field">
+                <label for="reviewer-note">Reviewer note (optional)</label>
+                <textarea id="reviewer-note" class="input" maxlength="500" @bind="_reviewNote"
+                          placeholder="Add a short note for the employee"></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @onclick="CancelReview">Cancel</button>
+                <button class="btn @(_reviewStatus == LeaveStatus.Approved ? "btn-primary" : "btn-danger")"
+                        @onclick="ConfirmReviewAsync">
+                    Confirm @_reviewStatus
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const int PageSize = 10;
+
+    private PagedResponse<LeaveRequestResponse>? _page;
+    private IReadOnlyList<EmployeeResponse> _employees = [];
+    private readonly HashSet<int> _busyRows = [];
+
+    private LeaveRequestResponse? _reviewTarget;
+    private LeaveStatus _reviewStatus;
+    private string _reviewNote = string.Empty;
+
+    private string _statusFilter = string.Empty;
+    private int _currentPage = 1;
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _showForm;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.Changed += OnAuthChanged;
+
+        await LoadEmployeesAsync();
+        await LoadAsync();
+    }
+
+    public void Dispose() => Auth.Changed -= OnAuthChanged;
+
+    private void OnAuthChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task LoadEmployeesAsync()
+    {
+        var result = await Api.GetEmployeesAsync();
+
+        if (result.IsSuccess && result.Value is not null)
+            _employees = result.Value;
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+
+        LeaveStatus? status = Enum.TryParse<LeaveStatus>(_statusFilter, out var parsed)
+            ? parsed
+            : null;
+
+        var result = await Api.GetLeaveRequestsAsync(status, _currentPage, PageSize);
+
+        if (result.IsSuccess)
+            _page = result.Value;
+        else
+            _error = result.Error;
+
+        _isLoading = false;
+    }
+
+    private Task ReloadAsync() => LoadAsync();
+
+    private Task ApplyFilterAsync()
+    {
+        _currentPage = 1;
+        return LoadAsync();
+    }
+
+    private Task ClearFilterAsync()
+    {
+        _statusFilter = string.Empty;
+        return ApplyFilterAsync();
+    }
+
+    private Task GoToPageAsync(int page)
+    {
+        _currentPage = page;
+        return LoadAsync();
+    }
+
+    private async Task CreateAsync(LeaveRequestCreate request)
+    {
+        _isSaving = true;
+        _error = null;
+
+        var result = await Api.CreateLeaveRequestAsync(request);
+
+        _isSaving = false;
+
+        if (!result.IsSuccess)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        _showForm = false;
+        _currentPage = 1;
+        await LoadAsync();
+    }
+
+    private void StartReview(LeaveRequestResponse item, LeaveStatus status)
+    {
+        _reviewTarget = item;
+        _reviewStatus = status;
+        _reviewNote = string.Empty;
+    }
+
+    private void CancelReview() => _reviewTarget = null;
+
+    private async Task ConfirmReviewAsync()
+    {
+        if (_reviewTarget is null)
+            return;
+
+        var id = _reviewTarget.Id;
+        var status = _reviewStatus;
+        var note = string.IsNullOrWhiteSpace(_reviewNote) ? null : _reviewNote.Trim();
+
+        _reviewTarget = null;
+
+        await ReviewAsync(id, status, note);
+    }
+
+    private async Task ReviewAsync(int id, LeaveStatus status, string? reviewerNote)
+    {
+        _busyRows.Add(id);
+        _error = null;
+
+        var result = await Api.UpdateStatusAsync(
+            id, new LeaveRequestStatusUpdate(status, reviewerNote));
+
+        _busyRows.Remove(id);
+
+        if (!result.IsSuccess)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _busyRows.Add(id);
+        _error = null;
+
+        var result = await Api.DeleteLeaveRequestAsync(id);
+
+        _busyRows.Remove(id);
+
+        if (!result.IsSuccess)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        await LoadAsync();
+    }
+}
