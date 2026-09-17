@@ -1,4 +1,5 @@
 using Hr.Domain.Entities;
+using Hr.Infrastructure.Persistence.Seed;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -45,5 +46,7 @@ public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
         builder.HasIndex(x => new { x.EmployeeId, x.StartDate, x.EndDate })
             .IsUnique()
             .HasFilter("[Status] = 'Pending'");
+
+        builder.HasData(LeaveRequestSeedData.Items);
     }
 }
